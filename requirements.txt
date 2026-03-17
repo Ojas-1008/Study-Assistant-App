@@ -1,0 +1,8 @@
+streamlit
+transformers
+torch
+pdfplumber
+wikipedia
+sentencepiece
+google-generativeai
+python-dotenv
