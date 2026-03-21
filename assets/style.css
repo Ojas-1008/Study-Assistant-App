@@ -1,0 +1,38 @@
+/* Main content area */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Card-like styling for info boxes */
+.metric-card {
+    background-color: #f0f2f6;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    border-left: 4px solid #1f77b4;
+}
+
+/* Custom heading styles */
+h1 {
+    color: #1f77b4;
+    margin-bottom: 0.5rem;
+}
+
+h2 {
+    color: #1f77b4;
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
+}
+
+h3 {
+    color: #2c3e50;
+}
+
+/* Tab content padding */
+.stTabs {
+    margin-top: 1rem;
+}
+
+/* Button styling */
+button {
+    border-radius: 0.5rem;
+}
