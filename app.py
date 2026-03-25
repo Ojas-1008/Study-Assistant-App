@@ -13,6 +13,7 @@ from utils.loader import (
     load_from_txt,
     load_from_wikipedia
 )
+from utils.summarizer import summarize
 
 # Load API keys and config from .env file
 load_dotenv()
@@ -206,16 +207,58 @@ with tab2:
     st.header("📝 Summarizer")
     st.write("Generate concise summaries of your loaded document.")
 
-    # Use document_text as a gateway to enable feature-specific functionality
-    if st.session_state.document_text:
-        st.info("✅ Document loaded. Coming soon: Summarization features will appear here.")
-        # Placeholder for future implementation
-        st.write("**Features to be added:**")
-        st.write("- Extract key points from the document")
-        st.write("- Generate short, medium, and long summaries")
-        st.write("- Highlight important concepts")
-    else:
+    # 1. Check if document_text is loaded
+    if not st.session_state.document_text:
         st.warning("⚠️ Please load a document in the Document Loader tab first.")
+        st.stop()
+
+    st.subheader("Summarization Settings")
+    st.write("Adjust the length and click the button to condense your study material.")
+
+    # 2. Slider for Summary Length
+    summary_len = st.slider(
+        "How detailed should the summary be?",
+        min_value=50,
+        max_value=300,
+        value=150,
+        step=10,
+        help="Higher values provide more detail but take longer to generate."
+    )
+
+    # 3. Generate Summary Button
+    if st.button("✨ Generate Summary", use_container_width=True, type="primary"):
+        # 4. Show loading indicator
+        with st.spinner("🧪 Summarizing your document... This may take a moment for large texts."):
+            try:
+                # Define range for BART (Max should be the slider value)
+                max_l = summary_len
+                min_l = max(30, max_l // 3)
+
+                # Call the model
+                summary = summarize(
+                    st.session_state.document_text, 
+                    max_length=max_l, 
+                    min_length=min_l
+                )
+                
+                # 5. Display result in a styled alert
+                st.divider()
+                st.subheader("📑 Document Summary")
+                st.success(summary)
+                
+                # 6. Display compression statistics using columns
+                original_words = len(st.session_state.document_text.split())
+                summary_words = len(summary.split())
+                compression = (1 - summary_words / original_words) * 100 if original_words > 0 else 0
+
+                st.divider()
+                stat_col1, stat_col2, stat_col3 = st.columns(3)
+                stat_col1.metric("Original Length", f"{original_words} words")
+                stat_col2.metric("Summary Length", f"{summary_words} words")
+                stat_col3.metric("Compression", f"{compression:.1f}%")
+                
+            except Exception as e:
+                st.error(f"❌ Summarization failed: {e}")
 
 
 # ========== TAB 3: Question Answering ==========
