@@ -14,6 +14,7 @@ from utils.loader import (
     load_from_wikipedia
 )
 from utils.summarizer import summarize
+from utils.qa import get_answer
 
 # Load API keys and config from .env file
 load_dotenv()
@@ -266,15 +267,49 @@ with tab3:
     st.header("❓ Question Answering")
     st.write("Ask questions about your loaded document and get instant answers.")
 
-    if st.session_state.document_text:
-        st.info("✅ Document loaded. Coming soon: QA features will appear here.")
-        # Placeholder for future implementation
-        st.write("**Features to be added:**")
-        st.write("- Ask questions about the document content")
-        st.write("- Get answers with relevant excerpts")
-        st.write("- Track question history")
-    else:
+    # 1. Check for an empty document (same guard as the Summarizer tab).
+    if not st.session_state.document_text:
         st.warning("⚠️ Please load a document in the Document Loader tab first.")
+        st.stop()
+
+    st.subheader("Interactive Q&A")
+    st.write("Enter your question below, and the AI will scan the document for the answer.")
+
+    # 2. Add a st.text_input() for the student's question
+    user_question = st.text_input(
+        "Enter your question:",
+        placeholder="Ask a factual question about the document...",
+        help="Type a question based on the document content."
+    )
+
+    # 3. Add an "Find Answer" button.
+    if st.button("🔍 Find Answer", use_container_width=True, type="primary"):
+        if not user_question.strip():
+            st.error("❌ Please enter a question.")
+        else:
+            with st.spinner("🧠 Searching the document for an answer..."):
+                try:
+                    # 4. Call get_answer()
+                    answer, score = get_answer(user_question, st.session_state.document_text)
+
+                    # Display result
+                    st.divider()
+                    st.subheader("💡 Answer Found")
+                    
+                    # The answer text in a styled card using st.success()
+                    st.success(answer)
+
+                    # The confidence score as a percentage using st.progress()
+                    score_percentage = round(score * 100)
+                    st.write(f"**Confidence Score:** {score_percentage}%")
+                    st.progress(score)
+
+                    # 5. Add a conditional warning: if the confidence score is below 0.30 (30%)
+                    if score < 0.30:
+                        st.warning(f"⚠️ **Note:** The confidence score is low ({score_percentage}%). The answer may not be explicitly present in the loaded document. Consider rephrasing your question or checking the source text directly.")
+
+                except Exception as e:
+                    st.error(f"❌ Question Answering failed: {e}")
 
 
 # ========== TAB 4: AI Chat Tutor ==========
