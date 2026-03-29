@@ -4,5 +4,5 @@ torch
 pdfplumber
 wikipedia
 sentencepiece
-google-generativeai
+openai
 python-dotenv

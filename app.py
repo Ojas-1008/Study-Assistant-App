@@ -19,6 +19,12 @@ from utils.qa import get_answer
 # Load API keys and config from .env file
 load_dotenv()
 
+# Import AI utilities (Cerebras-powered)
+from utils.gemini import configure, get_chat_response, generate_quiz, simplify_text
+
+# Configure Cerebras API
+configure(os.getenv("CEREBRAS_API_KEY"))
+
 # Configure page title, icon, and layout
 st.set_page_config(
     page_title="Smart Study Assistant",
@@ -41,6 +47,12 @@ if "doc_source" not in st.session_state:
     st.session_state.doc_source = ""       # Title/source name for display
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []     # List to store interaction logs
+if "quiz_questions" not in st.session_state:
+    st.session_state.quiz_questions = None # Store generated quiz data
+if "user_answers" not in st.session_state:
+    st.session_state.user_answers = {}     # Store student selections
+if "show_explanations" not in st.session_state:
+    st.session_state.show_explanations = {} # Track which explanations to show
 
 # App header
 st.title("Smart Study Assistant 📚")
@@ -315,46 +327,210 @@ with tab3:
 # ========== TAB 4: AI Chat Tutor ==========
 with tab4:
     st.header("💬 AI Chat Tutor")
-    st.write("Chat with an AI tutor about your study material.")
+    st.write("Chat with an AI tutor about your study material. The tutor knows everything in your document!")
 
-    if st.session_state.document_text:
-        st.info("✅ Document loaded. Coming soon: Chat features will appear here.")
-        # Placeholder for future implementation
-        st.write("**Features to be added:**")
-        st.write("- Interactive chat with AI tutor")
-        st.write("- Explain difficult concepts")
-        st.write("- Get personalized learning suggestions")
-    else:
+    # 1. Check for an empty document
+    if not st.session_state.document_text:
         st.warning("⚠️ Please load a document in the Document Loader tab first.")
+        st.stop()
+
+    # 5. Clear Chat Button
+    if st.button("🧹 Clear Chat History", use_container_width=True):
+        st.session_state.chat_history = []
+        st.rerun()
+
+    st.divider()
+
+    # 2. Display existing chat history
+    for message in st.session_state.chat_history:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # 3. Chat Input Box
+    if prompt := st.chat_input("Ask your study tutor a question..."):
+        # 4. Handle student message
+        # Display student message
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        
+        # Add to session state
+        st.session_state.chat_history.append({"role": "user", "content": prompt})
+
+        # Generate AI response
+        with st.spinner("🧠 AI tutor is thinking..."):
+            try:
+                response = get_chat_response(
+                    prompt, 
+                    st.session_state.document_text, 
+                    st.session_state.chat_history
+                )
+                
+                # Display assistant message
+                with st.chat_message("assistant"):
+                    st.markdown(response)
+                
+                # Add to session state
+                st.session_state.chat_history.append({"role": "assistant", "content": response})
+            
+            except Exception as e:
+                st.error(f"❌ Chat failed: {e}")
 
 
 # ========== TAB 5: Quiz Generator ==========
 with tab5:
     st.header("🧪 Quiz Generator")
-    st.write("Generate quizzes based on your study material.")
+    st.write("Generate a 5-question practice quiz based on your study material.")
 
-    if st.session_state.document_text:
-        st.info("✅ Document loaded. Coming soon: Quiz features will appear here.")
-        # Placeholder for future implementation
-        st.write("**Features to be added:**")
-        st.write("- Auto-generate multiple-choice questions")
-        st.write("- Create practice quizzes")
-        st.write("- Track quiz scores and performance")
-    else:
+    # 1. Check for an empty document
+    if not st.session_state.document_text:
         st.warning("⚠️ Please load a document in the Document Loader tab first.")
+        st.stop()
+
+    # 2. Add a "Generate Quiz" button
+    if st.button("✨ Generate New Quiz", use_container_width=True, type="primary"):
+        # 3. Call generate_quiz() wrapped in a spinner
+        with st.spinner("🧠 AI is creating your practice quiz..."):
+            result = generate_quiz(st.session_state.document_text)
+            
+            if isinstance(result, list):
+                # Store the result in st.session_state.quiz_questions
+                st.session_state.quiz_questions = result
+                # Reset previous answers when a new quiz is generated
+                st.session_state.user_answers = {}
+                st.session_state.show_explanations = {}
+                st.success("✅ Quiz generated successfully!")
+            else:
+                # If the function returned an error string
+                st.error(result)
+
+    # 4. Display each question if quiz exists
+    if st.session_state.quiz_questions:
+        st.divider()
+        
+        # Use a loop with enumerate() to render questions
+        for idx, q_data in enumerate(st.session_state.quiz_questions):
+            st.markdown(f"### Question {idx + 1}")
+            st.write(q_data["question"])
+            
+            # Prepare radio options as a list of "A: text", "B: text", etc.
+            # This makes selecting easier for the user
+            option_keys = ["A", "B", "C", "D"]
+            options_display = [f"{k}: {q_data['options'][k]}" for k in option_keys]
+            
+            # Store/retrieve student answer in session state
+            # We map index to index for st.radio
+            current_choice_idx = st.session_state.user_answers.get(idx, None)
+            
+            user_choice = st.radio(
+                f"Select an answer for Question {idx + 1}:",
+                options_display,
+                index=current_choice_idx,
+                key=f"q_radio_{idx}",
+                label_visibility="collapsed"
+            )
+            
+            # Update session state only if a selection is made
+            if user_choice is not None:
+                st.session_state.user_answers[idx] = options_display.index(user_choice)
+            
+            # Add a "Check Answer" button for each question
+            if st.button(f"🔎 Check Answer {idx + 1}", key=f"btn_{idx}"):
+                st.session_state.show_explanations[idx] = True
+            
+            # When clicked, compare to correct key and show results
+            if st.session_state.show_explanations.get(idx):
+                selected_letter = option_keys[st.session_state.user_answers[idx]]
+                correct_letter = q_data["correct"]
+                
+                if selected_letter == correct_letter:
+                    st.success(f"✅ **Correct!** The answer is {correct_letter}.")
+                else:
+                    st.error(f"❌ **Incorrect.** You selected {selected_letter}, but the correct answer is {correct_letter}.")
+                
+                st.info(f"💡 **Explanation:** {q_data['explanation']}")
+            
+            st.divider()
+            
+        # 5. Display Score Card if all questions are answered and checked
+        if len(st.session_state.show_explanations) == 5:
+            st.title("🏆 Quiz Results")
+            
+            # Calculate total score
+            score = 0
+            option_keys = ["A", "B", "C", "D"]
+            for i, q_data in enumerate(st.session_state.quiz_questions):
+                selected_idx = st.session_state.user_answers.get(i)
+                if selected_idx is not None:
+                    selected_letter = option_keys[selected_idx]
+                    if selected_letter == q_data["correct"]:
+                        score += 1
+            
+            # Display Score with metrics
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Final Score", f"{score} / 5")
+            
+            with col2:
+                # Dynamic motivational message
+                if score == 5:
+                    st.success("🌟 **Excellent! Perfect Score!** You've mastered this material.")
+                elif score >= 3:
+                    st.info("👍 **Good effort!** You've got a solid handle on the key concepts.")
+                else:
+                    st.warning("📖 **Keep studying!** Review the document again and try the quiz once more.")
+            
+            st.divider()
+            
+        # Optional: Reset Quiz button
+        if st.button("🧹 Clear Quiz Results", use_container_width=True):
+            st.session_state.quiz_questions = None
+            st.session_state.user_answers = {}
+            st.session_state.show_explanations = {}
+            st.rerun()
 
 
 # ========== TAB 6: Concept Simplifier ==========
 with tab6:
     st.header("🔍 Concept Simplifier")
-    st.write("Break down complex concepts into simple explanations.")
+    st.write("Paste any difficult sentence or paragraph and get it rewritten in simple, clear English.")
+    st.info("💡 **Note:** This tool works independently — you don't need to load a document to use it!")
 
-    if st.session_state.document_text:
-        st.info("✅ Document loaded. Coming soon: Concept simplification features will appear here.")
-        # Placeholder for future implementation
-        st.write("**Features to be added:**")
-        st.write("- Identify and simplify complex concepts")
-        st.write("- Create visual explanations")
-        st.write("- Provide real-world examples")
-    else:
-        st.warning("⚠️ Please load a document in the Document Loader tab first.")
+    # 1. Text area for the complex input
+    complex_input = st.text_area(
+        "Paste your complex text here:",
+        placeholder="e.g., 'The mitochondrial matrix is the site of the TCA cycle, a series of chemical reactions used by all aerobic organisms to generate energy...'",
+        height=200
+    )
+
+    # 2. Simplify button
+    if st.button("✨ Simplify This", use_container_width=True, type="primary"):
+        if not complex_input.strip():
+            st.error("❌ Please paste some text first.")
+        else:
+            # 3. Call simplify_text() with a spinner
+            with st.spinner("🧠 Breaking it down into simple terms..."):
+                try:
+                    simplified_result = simplify_text(complex_input)
+                    
+                    st.divider()
+                    st.subheader("📝 Comparison")
+                    
+                    # 4. Side-by-side comparison
+                    col_orig, col_simp = st.columns(2)
+                    
+                    with col_orig:
+                        st.markdown("**Original Text:**")
+                        st.info(complex_input)
+                    
+                    with col_simp:
+                        st.markdown("**Simplified Version:**")
+                        st.success(simplified_result)
+                        
+                except Exception as e:
+                    st.error(f"❌ Simplification failed: {e}")
+
+    st.divider()
+    st.markdown("### How it works")
+    st.write("- **Plain English:** Replaces academic jargon with everyday words.")
+    st.write("- **Short Sentences:** Breaks long, run-on sentences into punchy ones.")
+    st.write("- **Preservation:** Keeps the exact same meaning, just makes it easier to read.")
